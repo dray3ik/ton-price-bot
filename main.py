@@ -12,19 +12,21 @@ TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID"))
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 logging.basicConfig(level=logging.INFO)
-
 async def get_ton_stats():
     url = "https://api.binance.com/api/v3/ticker/24hr"
-    params = {"symbol": "TONUSDT"}
+    params = {"symbol": "TONUSDT"}  # ✅ This is correct
     async with aiohttp.ClientSession() as session:
         async with session.get(url, params=params) as resp:
             data = await resp.json()
+            if "lastPrice" not in data:
+                raise ValueError(f"Invalid response: {data}")
             return {
                 "price": float(data["lastPrice"]),
                 "high": float(data["highPrice"]),
                 "low": float(data["lowPrice"]),
                 "change": float(data["priceChangePercent"])
             }
+
 
 def format_stats(s):
     return (
