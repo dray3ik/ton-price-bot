@@ -13,18 +13,23 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 logging.basicConfig(level=logging.INFO)
 async def get_ton_stats():
-    url = "https://api.binance.com/api/v3/ticker/24hr"
-    params = {"symbol": "TONUSDT"}  # ✅ This is correct
+    url = "https://api.coingecko.com/api/v3/simple/price"
+    params = {
+        "ids": "toncoin",
+        "vs_currencies": "usd"
+    }
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, params=params) as resp:
-            data = await resp.json()
-            if "lastPrice" not in data:
+        async with session.get(url, params=params) as response:
+            data = await response.json()
+            if "toncoin" not in data:
                 raise ValueError(f"Invalid response: {data}")
             return {
-                "price": float(data["lastPrice"]),
-                "high": float(data["highPrice"]),
-                "low": float(data["lowPrice"]),
-                "change": float(data["priceChangePercent"])
+                "price": float(data["toncoin"]["usd"]),
+                "high": 0,
+                "low": 0,
+                "change": 0
+            }
+
             }
 
 
