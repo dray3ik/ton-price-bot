@@ -30,38 +30,55 @@ dp = Dispatcher()
 @dp.message(F.text == "/tonprice")
 async def ton_price(message: Message):
     try:
-        price = await get_ton_price()
-        await message.answer(f"💰 Toncoin price: {hbold(f'${price:.4f}')}")
+        stats = await get_ton_stats()
+        text = (
+            f"💎 <b>Toncoin Price (Binance)</b>\n"
+            f"💰 Price: {hbold(f'${stats['price']:.4f}')}\n"
+            f"📈 High: ${stats['high']:.4f}\n"
+            f"📉 Low: ${stats['low']:.4f}\n"
+            f"🔁 24h Change: {stats['change']}%"
+        )
+        await message.answer(text)
     except Exception as e:
         logging.error(f"Error fetching TON price: {e}")
-        await message.answer("⚠️ Failed to fetch TON price. Try again later.")
+        await message.answer("⚠️ Failed to fetch TON price from Binance.")
 
-# === TON PRICE FROM COINGECKO ===
-async def get_ton_price():
-    url = "https://api.coingecko.com/api/v3/simple/price"
-    params = {"ids": "toncoin", "vs_currencies": "usd"}
+# === BINANCE FETCH ===
+async def get_ton_stats():
+    url = "https://api.binance.com/api/v3/ticker/24hr"
+    params = {"symbol": "TONUSDT"}
     async with aiohttp.ClientSession() as session:
         async with session.get(url, params=params) as response:
             data = await response.json()
-            if "toncoin" not in data:
+            if "lastPrice" not in data:
                 raise ValueError(f"Invalid response: {data}")
-            return data["toncoin"]["usd"]
+            return {
+                "price": float(data["lastPrice"]),
+                "high": float(data["highPrice"]),
+                "low": float(data["lowPrice"]),
+                "change": float(data["priceChangePercent"])
+            }
 
-# === AUTO POST TO CHANNEL/GROUP ===
+# === AUTO POST LOOP ===
 async def auto_post_loop():
     while True:
         try:
-            price = await get_ton_price()
-            text = f"📈 1 TON = {hbold(f'${price:.4f}')}"
+            stats = await get_ton_stats()
+            text = (
+                f"📢 <b>TON Update</b>\n"
+                f"💰 Price: {hbold(f'${stats['price']:.4f}')}\n"
+                f"🔺 High: ${stats['high']:.4f} | 🔻 Low: ${stats['low']:.4f}\n"
+                f"📊 Change: {stats['change']}%"
+            )
             await bot.send_message(chat_id=TARGET_CHAT_ID, text=text)
-            logging.info("✅ Sent auto update")
+            logging.info("✅ Sent TON update")
         except Exception as e:
             logging.error(f"Auto-post error: {e}")
-        await asyncio.sleep(60)  # every 1 minute
+        await asyncio.sleep(60)  # 1 minute
 
-# === WEB SERVER FOR UPTIME MONITORING ===
+# === WEB SERVER FOR UPTIME ===
 async def handle(request):
-    return web.Response(text="✅ Bot is running")
+    return web.Response(text="✅ Bot is running (Binance)")
 
 async def start_web_server():
     app = web.Application()
