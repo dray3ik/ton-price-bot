@@ -1,14 +1,19 @@
 import asyncio
 import logging
+import os
 import aiohttp
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiohttp import web
+from keep_alive import keep_alive
+
+# Start web server to keep Replit alive
+keep_alive()
 
 # ——— CONFIGURATION ———
-API_TOKEN = "7419681284:AAGWn2iymNcqhrk5NBk4jFK-JyTGJx_zJ3Y"
+API_TOKEN = os.environ.get("token")  # Put your bot token in Secrets as "token"
 TARGET_CHAT_ID = -1002807127167  # Replace with your group/channel ID
 # ————————————————
 
@@ -48,7 +53,7 @@ async def cmd_price(m: Message):
     s = await get_ton_stats()
     await m.answer(format_stats_message(s), parse_mode=ParseMode.HTML, reply_markup=get_refresh_button())
 
-@dp.callback_query(F.data=="refresh_price")
+@dp.callback_query(F.data == "refresh_price")
 async def cb_refresh(c: types.CallbackQuery):
     s = await get_ton_stats()
     await c.message.edit_text(format_stats_message(s), parse_mode=ParseMode.HTML, reply_markup=get_refresh_button())
