@@ -1,63 +1,94 @@
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher
+import aiohttp
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
-from aiohttp import ClientSession, web
+from aiogram.filters import Command
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiohttp import web
 
-# ========== CONFIG ==========
-BOT_TOKEN = "YOUR_ACTUAL_BOT_TOKEN"        # <-- Replace with your bot token
-CHANNEL_ID = "@yourchannel"                # <-- Replace with @channelname or -1001234567890
-BINANCE_API = "https://api.binance.com/api/v3/ticker/price?symbol=TONUSDT"
-# ============================
+# ——— CONFIGURATION ———
+API_TOKEN = "7419681284:AAGWn2iymNcqhrk5NBk4jFK-JyTGJx_zJ3Y"
+TARGET_CHAT_ID = -1002807127167  # Replace with your group/channel ID
+# ————————————————
 
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-)
-dp = Dispatcher()
 logging.basicConfig(level=logging.INFO)
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher()
 
-# === Fetch Toncoin price from Binance ===
-async def get_ton_price():
-    async with ClientSession() as session:
-        async with session.get(BINANCE_API) as resp:
+async def get_ton_stats():
+    url = "https://api.binance.com/api/v3/ticker/24hr"
+    params = {"symbol": "TONUSDT"}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as resp:
             data = await resp.json()
-            return float(data["price"])
+            return {
+                "price": float(data["lastPrice"]),
+                "high": float(data["highPrice"]),
+                "low": float(data["lowPrice"]),
+                "change": float(data["priceChangePercent"])
+            }
 
-# === Task: post price every 60 seconds ===
-async def post_price_task():
-    await bot.delete_webhook(drop_pending_updates=True)
+def format_stats_message(s):
+    return (
+        f"💰 <b>Toncoin (TON)</b>\n"
+        f"• Price: <code>${s['price']:.4f}</code>\n"
+        f"• 24h High: <code>${s['high']:.4f}</code>\n"
+        f"• 24h Low: <code>${s['low']:.4f}</code>\n"
+        f"• 24h Change: <code>{s['change']:+.2f}%</code>"
+    )
+
+def get_refresh_button():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Refresh", callback_data="refresh_price")]
+    ])
+
+@dp.message(Command("tonprice"))
+async def cmd_price(m: Message):
+    s = await get_ton_stats()
+    await m.answer(format_stats_message(s), parse_mode=ParseMode.HTML, reply_markup=get_refresh_button())
+
+@dp.callback_query(F.data=="refresh_price")
+async def cb_refresh(c: types.CallbackQuery):
+    s = await get_ton_stats()
+    await c.message.edit_text(format_stats_message(s), parse_mode=ParseMode.HTML, reply_markup=get_refresh_button())
+    await c.answer("🔁 Updated")
+
+@dp.message(Command("tonmood"))
+async def cmd_mood(m: Message):
+    s = await get_ton_stats()
+    c = s["change"]
+    mood = (
+        "🟢 <b>TON is pumping!</b>"
+        if c >= 5 else
+        "📈 <b>TON is rising steadily.</b>"
+        if c >= 1 else
+        "🟡 <b>TON is calm.</b>"
+        if c > -1 else
+        "🔻 <b>TON is dipping.</b>"
+        if c > -5 else
+        "🔴 <b>TON is crashing!</b>"
+    )
+    await m.answer(f"{mood}\n\n24h Change: <code>{c:+.2f}%</code>", parse_mode=ParseMode.HTML)
+
+async def auto_post_loop():
     while True:
-        try:
-            price = await get_ton_price()
-            text = f"💎 <b>Toncoin Price (Binance):</b> ${price:.4f}"
-            await bot.send_message(CHANNEL_ID, text)
-        except Exception as e:
-            logging.error(f"[POST ERROR] {e}")
+        s = await get_ton_stats()
+        await bot.send_message(TARGET_CHAT_ID, format_stats_message(s), parse_mode=ParseMode.HTML, reply_markup=get_refresh_button())
+        logging.info("✅ Auto update sent")
         await asyncio.sleep(60)
 
-# === Simple HTTP route for UptimeRobot ===
-async def handle_ping(request):
-    return web.Response(text="Bot is alive!")
+async def handle_ping(req):
+    return web.Response(text="✅ Bot is running")
 
-# === Start a web server for Render/UptimeRobot ===
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8080)
-    await site.start()
-
-# === Startup event for Aiogram Dispatcher ===
-@dp.startup()
-async def on_startup(dispatcher: Dispatcher):
-    asyncio.create_task(post_price_task())
-
-# === Main function ===
 async def main():
-    await start_web_server()
+    await bot.delete_webhook(drop_pending_updates=True)
+    web_app = web.Application()
+    web_app.router.add_get("/", handle_ping)
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    await web.TCPSite(runner, "0.0.0.0", 8080).start()
+    asyncio.create_task(auto_post_loop())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
